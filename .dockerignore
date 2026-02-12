@@ -1,4 +1,16 @@
 crawl4ai_mcp.egg-info
 __pycache__
 .venv
+venv
 .env
+.env.bak
+.git
+.DS_Store
+logs/
+tests/
+scripts/
+docs/
+*.log
+*.md
+!README.md
+docker-compose.yml.backup

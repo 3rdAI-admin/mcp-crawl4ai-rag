@@ -1,7 +1,14 @@
 .env
+.env.bak
 .venv
+venv
 __pycache__
 crawl4ai_mcp.egg-info
 repos
 .claude
 test_script_hallucination*
+logs/*.log
+logs/*.txt
+logs/*.json
+.cache/
+.DS_Store

@@ -54,20 +54,21 @@ The server provides essential web crawling and search tools:
 
 ### Core Tools (Always Available)
 
-1. **`crawl_single_page`**: Quickly crawl a single web page and store its content in the vector database
-2. **`smart_crawl_url`**: Intelligently crawl a full website based on the type of URL provided (sitemap, llms-full.txt, or a regular webpage that needs to be crawled recursively)
-3. **`get_available_sources`**: Get a list of all available sources (domains) in the database
-4. **`perform_rag_query`**: Search for relevant content using semantic search with optional source filtering
+1. **`crawl_website`**: Crawl websites and store content in the vector database
+2. **`extract_content`**: Extract content from web pages
+3. **`search_web`**: Search the web for relevant content
+4. **`get_available_sources`**: Get a list of all available sources (domains) in the database
+5. **`health_check`**: Basic server health check for debugging
 
 ### Conditional Tools
 
-5. **`search_code_examples`** (requires `USE_AGENTIC_RAG=true`): Search specifically for code examples and their summaries from crawled documentation. This tool provides targeted code snippet retrieval for AI coding assistants.
+6. **`search_code_examples`** (requires `USE_AGENTIC_RAG=true`): Search specifically for code examples and their summaries from crawled documentation. This tool provides targeted code snippet retrieval for AI coding assistants.
 
 ### Knowledge Graph Tools (requires `USE_KNOWLEDGE_GRAPH=true`, see below)
 
-6. **`parse_github_repository`**: Parse a GitHub repository into a Neo4j knowledge graph, extracting classes, methods, functions, and their relationships for hallucination detection
-7. **`check_ai_script_hallucinations`**: Analyze Python scripts for AI hallucinations by validating imports, method calls, and class usage against the knowledge graph
-8. **`query_knowledge_graph`**: Explore and query the Neo4j knowledge graph with commands like `repos`, `classes`, `methods`, and custom Cypher queries
+7. **`parse_github_repository`**: Parse a GitHub repository into a Neo4j knowledge graph, extracting classes, methods, functions, and their relationships for hallucination detection
+8. **`check_ai_script_hallucinations`**: Analyze Python scripts for AI hallucinations by validating imports, method calls, and class usage against the knowledge graph
+9. **`query_knowledge_graph`**: Explore and query the Neo4j knowledge graph with commands like `repos`, `classes`, `methods`, and custom Cypher queries
 
 ## Prerequisites
 
@@ -89,7 +90,7 @@ The server provides essential web crawling and search tools:
 
 2. Build the Docker image:
    ```bash
-   docker build -t mcp/crawl4ai-rag --build-arg PORT=8051 .
+   docker build -t mcp/crawl4ai-rag .
    ```
 
 3. Create a `.env` file based on the configuration section below
@@ -182,7 +183,7 @@ Create a `.env` file in the project root with the following variables:
 ```
 # MCP Server Configuration
 HOST=0.0.0.0
-PORT=8051
+PORT=8054
 TRANSPORT=sse
 
 # OpenAI API Configuration
@@ -201,6 +202,11 @@ USE_KNOWLEDGE_GRAPH=false
 # Supabase Configuration
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_KEY=your_supabase_service_key
+
+# PostgreSQL Configuration (used by docker-compose)
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=agentic_rag
 
 # Neo4j Configuration (required for knowledge graph functionality)
 NEO4J_URI=bolt://localhost:7687
@@ -304,7 +310,7 @@ USE_KNOWLEDGE_GRAPH=false
 ### Using Docker
 
 ```bash
-docker run --env-file .env -p 8051:8051 mcp/crawl4ai-rag
+docker compose up -d
 ```
 
 ### Using Python
@@ -326,7 +332,7 @@ Once you have the server running with SSE transport, you can connect to it using
   "mcpServers": {
     "crawl4ai-rag": {
       "transport": "sse",
-      "url": "http://localhost:8051/sse"
+      "url": "http://localhost:8054/sse"
     }
   }
 }
@@ -338,7 +344,7 @@ Once you have the server running with SSE transport, you can connect to it using
 >   "mcpServers": {
 >     "crawl4ai-rag": {
 >       "transport": "sse",
->       "serverUrl": "http://localhost:8051/sse"
+>       "serverUrl": "http://localhost:8054/sse"
 >     }
 >   }
 > }
@@ -348,7 +354,7 @@ Once you have the server running with SSE transport, you can connect to it using
 
 > **Note for Claude Code users**: 
 ```
-claude mcp add-json crawl4ai-rag '{"type":"http","url":"http://localhost:8051/sse"}' --scope user
+claude mcp add-json crawl4ai-rag '{"type":"http","url":"http://localhost:8054/sse"}' --scope user
 ```
 
 ### Stdio Configuration
@@ -445,11 +451,52 @@ The Neo4j database stores code structure as:
 2. **Code Validation**: Use `check_ai_script_hallucinations` tool to validate AI-generated Python scripts
 3. **Knowledge Exploration**: Use `query_knowledge_graph` tool to explore available repositories, classes, and methods
 
+## Project Structure
+
+```
+mcp_crawl4ai_rag/
+├── src/                          # Core application code
+│   ├── crawl4ai_mcp.py           #   MCP server implementation
+│   ├── utils.py                  #   Helper functions
+│   └── utils/                    #   Utility modules
+├── knowledge_graphs/             # Knowledge graph modules
+│   ├── parse_repo_into_neo4j.py  #   GitHub repo parser
+│   ├── ai_script_analyzer.py     #   Python AST analyzer
+│   ├── knowledge_graph_validator.py  # Code validation
+│   ├── hallucination_reporter.py #   Hallucination reports
+│   └── query_knowledge_graph.py  #   KG query CLI
+├── tests/                        # Test files
+├── scripts/
+│   ├── debug/                    #   Debug & investigation scripts
+│   ├── clients/                  #   Client examples & utilities
+│   └── runners/                  #   Alternative server runners
+├── docs/                         # Documentation
+│   ├── SETUP.md                  #   Client setup guide
+│   ├── MCP_CONNECTION_GUIDE.md   #   Connection reference
+│   └── integrate_archon_crawl4ai.md
+├── logs/                         # Log files (gitignored)
+├── run_mcp_server.py             # Primary server entry point
+├── startup.sh                    # Docker startup script
+├── run_container.sh              # Docker build & run script
+├── crawled_pages.sql             # Database schema init
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+├── requirements.txt
+└── .env / .env.example
+```
+
+## Additional Documentation
+
+- **[Client Setup Guide](docs/SETUP.md)** — How to connect your app to this MCP server
+- **[MCP Connection Guide](docs/MCP_CONNECTION_GUIDE.md)** — Detailed connection reference
+- **[Archon Integration](docs/integrate_archon_crawl4ai.md)** — Integrating with Archon
+
 ## Building Your Own Server
 
 This implementation provides a foundation for building more complex MCP servers with web crawling capabilities. To build your own:
 
 1. Add your own tools by creating methods with the `@mcp.tool()` decorator
 2. Create your own lifespan function to add your own dependencies
-3. Modify the `utils.py` file for any helper functions you need
+3. Modify the `src/utils.py` file for any helper functions you need
 4. Extend the crawling capabilities by adding more specialized crawlers
