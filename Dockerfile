@@ -1,5 +1,5 @@
 # Use official Python runtime as a parent image
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -37,7 +37,7 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH="/app:/app/src:${PYTHONPATH}" \
+    PYTHONPATH="/app:/app/src" \
     PORT=8054 \
     HOST=0.0.0.0 \
     LOG_LEVEL=INFO \
@@ -59,6 +59,10 @@ COPY . .
 
 # Make sure scripts in .local are usable
 ENV PATH="/root/.local/bin:${PATH}"
+
+# Playwright system libraries + Chromium (required for Crawl4AI / crawl_website in Docker)
+RUN playwright install-deps chromium \
+    && playwright install chromium
 
 # Create log directory with proper permissions
 RUN mkdir -p /app/logs /app/.cache \
