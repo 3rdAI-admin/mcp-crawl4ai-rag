@@ -165,6 +165,31 @@ pip install mcp httpx-sse
 - **Crawler**: Crawl4AI for web scraping
 - **Port**: 8054 (mapped from internal 8054)
 
+## Code Companion (this machine)
+
+**Code Companion** reads external MCP servers from **`.cc-config.json`** → **`mcpClients`**. This stack uses **SSE** on port **8054** (see `docker-compose.yml`).
+
+1. Start the stack from this repo: `docker compose up -d` (or `./startup.sh`).
+2. In Code Companion **Settings → MCP Clients**, add a client (or merge into `.cc-config.json`):
+
+```json
+{
+  "id": "crawl4ai-rag",
+  "name": "Crawl4AI RAG",
+  "transport": "sse",
+  "command": "",
+  "args": [],
+  "env": {},
+  "url": "http://127.0.0.1:8054/sse",
+  "autoConnect": true,
+  "disabledTools": []
+}
+```
+
+Use **`127.0.0.1`** (not `localhost`) to avoid IPv6 / resolver quirks with the Node MCP client. The URL must include the **`/sse`** path (FastMCP `sse_app()`).
+
+Full notes: in your Code Companion checkout, **`docs/CRAWL4AI-RAG-MCP.md`**.
+
 ## Next Steps
 
 1. **Install MCP SDK**: `pip install mcp httpx-sse`

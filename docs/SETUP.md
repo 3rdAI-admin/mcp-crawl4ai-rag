@@ -74,6 +74,10 @@ Add the following to your app's MCP configuration file. The exact file location 
 }
 ```
 
+### Code Companion
+
+Add an entry to **`mcpClients`** in **`.cc-config.json`** (see **`docs/CC-CONFIG.md`** in the Code Companion repo). Use **`transport`: `"sse"`** and **`url`**: **`http://127.0.0.1:8054/sse`** (include `/sse`; prefer `127.0.0.1` over `localhost`). See **`docs/CRAWL4AI-RAG-MCP.md`** in Code Companion for compose prerequisites and troubleshooting.
+
 ### Client-Specific Notes
 
 **Windsurf** — use `serverUrl` instead of `url`:

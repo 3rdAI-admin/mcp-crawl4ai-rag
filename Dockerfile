@@ -46,6 +46,11 @@ ENV PYTHONUNBUFFERED=1 \
 # Set the working directory
 WORKDIR /app
 
+# Root CA + TLS for DuckDuckGo / HTTPS from slim image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
 

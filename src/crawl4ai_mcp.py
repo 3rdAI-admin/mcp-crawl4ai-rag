@@ -4,6 +4,7 @@ import logging
 import asyncio
 import json
 import urllib.request
+from urllib.parse import parse_qs, unquote, urlparse
 import datetime
 from contextlib import asynccontextmanager
 from typing import Dict, Callable, Any, List, Optional, Type
@@ -124,16 +125,10 @@ class Crawl4AIContext:
 # Create a global context instance
 crawl4ai_context = None
 
-# Create the MCP server instance first
-mcp = FastMCP(
-    "crawl4ai",
-    version="1.0.0",
-    description="MCP server for web crawling and content extraction with Crawl4AI"
-)
 
 @asynccontextmanager
 async def crawl4ai_lifespan(server: FastMCP):
-    global crawl4ai_context, mcp
+    global crawl4ai_context
     
     logger.info("Initializing Crawl4AI MCP server...")
     
@@ -145,9 +140,6 @@ async def crawl4ai_lifespan(server: FastMCP):
         # Initialize the global context
         crawl4ai_context = Crawl4AIContext()
         logger.info("Crawl4AI context initialized")
-        
-        # Register tools
-        await register_tools(server)
         
         yield
         
@@ -163,322 +155,6 @@ async def crawl4ai_lifespan(server: FastMCP):
             except Exception as e:
                 logger.error(f"Error closing crawler: {e}")
 
-async def register_tools(server: FastMCP):
-    """Register all tools with the MCP server.
-    
-    Args:
-        server: FastMCP instance to register tools with.
-    """
-    global crawl4ai_context
-    
-    @server.tool(
-        name="get_available_sources",
-        description="Get a list of available data sources and their capabilities"
-    )
-    async def get_available_sources() -> Dict[str, Any]:
-        """Return a list of available data sources and their capabilities."""
-        try:
-            logger.info("Getting available sources...")
-            
-            sources = [
-                {
-                    "id": "web",
-                    "name": "Web Crawler",
-                    "description": "Crawl and extract content from web pages",
-                    "type": "web",
-                    "capabilities": ["crawl", "extract_text", "extract_metadata"]
-                },
-                {
-                    "id": "document",
-                    "name": "Document Parser",
-                    "description": "Extract content from documents (PDF, DOCX, etc.)",
-                    "type": "document",
-                    "capabilities": ["extract_text", "extract_metadata", "convert_to_markdown"]
-                },
-                {
-                    "id": "search",
-                    "name": "Web Search",
-                    "description": "Search the web for information",
-                    "type": "web_search",
-                    "capabilities": ["search", "extract_snippets"]
-                },
-                {
-                    "id": "database",
-                    "name": "Database Connector",
-                    "description": "Query structured data from databases",
-                    "type": "database",
-                    "capabilities": ["query", "schema_discovery"]
-                }
-            ]
-            
-            return {
-                "success": True,
-                "sources": sources,
-                "count": len(sources)
-            }
-            
-        except Exception as e:
-            logger.exception(f"Error getting available sources: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-    
-    @server.tool(
-        name="extract_content",
-        description="Extract structured content from a webpage"
-    )
-    async def extract_content(context: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract structured content from a webpage.
-        
-        Args:
-            context: Dictionary containing:
-                - url: The URL of the webpage to extract content from
-                - strategy: The extraction strategy to use (llm, fast, or accurate)
-                - request_id: Optional ID for tracking the request
-        """
-        global crawl4ai_context
-        url = context.get('url')
-        strategy = context.get('strategy', 'llm')
-        request_id = context.get('request_id', f"req_{int(time.time())}")
-        
-        if not url:
-            return {
-                "status": "error",
-                "error": "No URL provided",
-                "request_id": request_id
-            }
-        
-        logger.info(f"[{request_id}] Extracting content from {url} with strategy: {strategy}")
-        
-        if not crawl4ai_context or not crawl4ai_context.crawler:
-            error_msg = "Web crawler is not available. Check server logs for initialization errors."
-            logger.error(error_msg)
-            return {
-                "status": "error",
-                "error": error_msg,
-                "request_id": request_id
-            }
-        
-        try:
-            # Validate URL
-            if not url or not isinstance(url, str) or not url.startswith(('http://', 'https://')):
-                error_msg = f"Invalid URL: {url}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "request_id": request_id
-                }
-            
-            # Configure extraction strategy
-            if strategy == "llm":
-                extraction_strategy = LLMExtractionStrategy()
-            elif strategy == "css":
-                extraction_strategy = JsonCssExtractionStrategy()
-            elif strategy == "xpath":
-                extraction_strategy = JsonXPathExtractionStrategy()
-            elif strategy == "lxml":
-                extraction_strategy = JsonLxmlExtractionStrategy()
-            else:
-                error_msg = f"Unsupported extraction strategy: {strategy}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "supported_strategies": ["llm", "css", "xpath", "lxml"],
-                    "request_id": request_id
-                }
-            
-            # Extract content
-            logger.info(f"Crawling URL: {url}")
-            result = await crawl4ai_context.crawler.crawl(
-                url=url,
-                extraction_strategy=extraction_strategy,
-                max_pages=1
-            )
-            
-            if not result or not result.pages:
-                error_msg = f"No content extracted from {url}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "request_id": request_id
-                }
-            
-            # Process the result
-            page = result.pages[0]
-            extracted_content = {
-                "status": "success",
-                "url": url,
-                "title": page.title,
-                "content": page.extracted_content,
-                "metadata": page.metadata,
-                "strategy": strategy,
-                "timestamp": datetime.utcnow().isoformat(),
-                "request_id": request_id
-            }
-            
-            # --- Web Knowledge Graph Integration ---
-            if os.getenv("ENABLE_WEB_KG", "false").lower() == "true":
-                try:
-                    graph = WebGraphNeo4j()
-                    # Upsert the page node
-                    graph.upsert_page(url, page.title)
-                    # Parse HTML for tables (demo)
-                    soup = BeautifulSoup(page.extracted_content, "html.parser")
-                    for i, table in enumerate(soup.find_all("table")):
-                        table_id = f"{url}#table{i+1}"
-                        caption = table.caption.string if table.caption else None
-                        graph.upsert_table(url, table_id, caption)
-                    graph.close()
-                    logger.info(f"Inserted page and tables into Neo4j for {url}")
-                except Exception as kg_e:
-                    logger.error(f"Neo4j web KG error: {kg_e}")
-            # --- End Web Knowledge Graph Integration ---
-            
-            logger.info(f"Successfully extracted content from {url}")
-            return extracted_content
-            
-        except Exception as e:
-            error_msg = f"Error extracting content from {url}: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            return {
-                "status": "error",
-                "error": error_msg,
-                "url": url,
-                "request_id": request_id
-            }
-    
-    @server.tool(
-        name="search_web",
-        description="Search the web for information"
-    )
-    async def search_web(context: Dict[str, Any]) -> Dict[str, Any]:
-        """Search the web for the given query.
-        
-        Args:
-            context: Dictionary containing:
-                - query: The search query
-                - limit: Maximum number of results to return (default: 5)
-                - request_id: Optional ID for tracking the request
-        """
-        global crawl4ai_context
-        query = context.get('query')
-        limit = context.get('limit', 5)
-        request_id = context.get('request_id', f"req_{int(time.time())}")
-        
-        if not query:
-            return {
-                "status": "error",
-                "error": "No search query provided",
-                "request_id": request_id
-            }
-        
-        logger.info(f"[{request_id}] Searching web for: {query} (limit: {limit})")
-        
-        if not crawl4ai_context or not crawl4ai_context.crawler:
-            error_msg = "Web crawler is not available. Check server logs for initialization errors."
-            logger.error(error_msg)
-            return {
-                "status": "error",
-                "error": error_msg,
-                "request_id": request_id,
-                "query": query
-            }
-        
-        try:
-            logger.info(f"Searching web for: {query}")
-            
-            # Validate limit
-            limit = max(1, min(20, int(limit)))  # Ensure limit is between 1 and 20
-            
-            try:
-                # This is a simplified example - in a real implementation,
-                # you would use a search API like Google Custom Search, SerpAPI, etc.
-                search_url = f"https://www.google.com/search?q={query}&num={limit}"
-                logger.debug(f"Searching with URL: {search_url}")
-                
-                # Use a basic extraction strategy for search results
-                try:
-                    extraction_strategy = JsonLxmlExtractionStrategy()
-                except Exception as e:
-                    error_msg = f"Failed to create extraction strategy: {str(e)}"
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg) from e
-                
-                # Execute the search and extract results
-                try:
-                    result = await crawl4ai_context.crawler.crawl(
-                        url=search_url,
-                        extraction_strategy=extraction_strategy
-                    )
-                except Exception as e:
-                    error_msg = f"Search request failed: {str(e)}"
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg) from e
-                
-                if not result or not hasattr(result, 'content'):
-                    error_msg = "No content received in search results"
-                    logger.warning(error_msg)
-                    return {
-                        "status": "error",
-                        "error": error_msg,
-                        "query": query,
-                        "request_id": request_id
-                    }
-                
-                # In a real implementation, you would parse the search results page
-                # to extract individual search results. For now, we'll return a simplified response.
-                response = {
-                    "status": "success",
-                    "query": query,
-                    "success": True,
-                    "results": [{
-                        "title": getattr(result, 'title', f"Search Results for: {query}"),
-                        "url": search_url,
-                        "snippet": (getattr(result, 'content', '') or '')[:500] + '...',
-                        "metadata": getattr(result, 'metadata', {})
-                    }],
-                    "request_id": request_id
-                }
-                
-                logger.info(f"Search completed successfully for query: {query}")
-                return response
-                
-            except Exception as e:
-                error_msg = f"Error performing web search: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                return {
-                    "status": "error",
-                    "query": query,
-                    "success": False,
-                    "error": error_msg,
-                    "request_id": request_id
-                }
-                
-        except Exception as e:
-            logger.exception(f"Error searching web: {e}")
-            return {
-                "status": "error",
-                "query": query,
-                "success": False,
-                "error": f"Search failed: {str(e)}",
-                "request_id": request_id
-            }
-    
-    @server.tool(
-        name="health_check",
-        description="Return a simple health check response for debugging."
-    )
-    async def health_check() -> dict:
-        import datetime
-        logger.info("health_check tool called")
-        result = {"status": "ok", "time": datetime.datetime.utcnow().isoformat()}
-        logger.info(f"health_check tool returning: {result}")
-        return result
-
 # Create the MCP server instance
 mcp = FastMCP(
     "crawl4ai",
@@ -488,6 +164,90 @@ mcp = FastMCP(
     host=os.getenv("HOST", "0.0.0.0"),
     port=os.getenv("PORT", "8054")
 )
+
+def _normalize_search_result_url(raw: str) -> str:
+    if not raw:
+        return raw
+    u = raw.strip()
+    if u.startswith("//"):
+        u = "https:" + u
+    if "uddg=" in u:
+        try:
+            q = urlparse(u).query.replace("&amp;", "&")
+            inner = (parse_qs(q).get("uddg") or [None])[0]
+            if inner:
+                return unquote(inner)
+        except Exception:
+            pass
+    return u
+
+
+def duckduckgo_web_search_sync(query: str, limit: int) -> Dict[str, Any]:
+    limit = max(1, min(20, int(limit)))
+    q = (query or "").strip()
+    if not q:
+        return {"status": "error", "error": "No search query provided", "results": []}
+    try:
+        from duckduckgo_search import DDGS
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(q, max_results=limit):
+                href = (r.get("href") or r.get("url") or "").strip()
+                title = (r.get("title") or "").strip()
+                body = (r.get("body") or r.get("snippet") or "").strip()
+                href = _normalize_search_result_url(href)
+                if href:
+                    results.append({"title": title, "url": href, "snippet": body})
+        if results:
+            return {"status": "success", "query": q, "results": results, "source": "duckduckgo"}
+    except Exception as e:
+        logger.warning("duckduckgo_search (DDGS) failed: %s", e)
+    try:
+        import re as _re
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; crawl4ai-rag-mcp/2.0; +https://github.com)"}
+        resp = requests.get("https://html.duckduckgo.com/html/", params={"q": q}, headers=headers, timeout=15)
+        resp.raise_for_status()
+        blocks = _re.findall(
+            r'class="result__title".*?href="([^"]+)"[^>]*>([^<]+).*?class="result__snippet"[^>]*>([^<]+)',
+            resp.text,
+            _re.DOTALL,
+        )
+        results = []
+        for url, title, snippet in blocks[:limit]:
+            url, title, snippet = url.strip(), title.strip(), snippet.strip()
+            url = _normalize_search_result_url(url)
+            if url:
+                results.append({"title": title, "url": url, "snippet": snippet})
+        if results:
+            return {"status": "success", "query": q, "results": results, "source": "duckduckgo_html"}
+    except Exception as e:
+        logger.warning("DuckDuckGo HTML fallback failed: %s", e)
+    return {
+        "status": "error",
+        "query": q,
+        "error": "Search returned no results.",
+        "results": [],
+    }
+
+
+@mcp.tool()
+async def get_available_sources() -> Dict[str, Any]:
+    try:
+        logger.info("Getting available sources...")
+        sources = [
+            {"id": "web", "name": "Web Crawler", "description": "Crawl web pages", "type": "web", "capabilities": ["crawl", "extract_text"]},
+            {"id": "search", "name": "Web Search", "description": "DuckDuckGo search (search_web)", "type": "web_search", "capabilities": ["search"]},
+        ]
+        return {"success": True, "sources": sources, "count": len(sources)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+async def health_check() -> Dict[str, Any]:
+    return {"status": "ok", "time": datetime.datetime.utcnow().isoformat()}
+
 
 # Tool registrations using decorators
 @mcp.tool()
@@ -616,36 +376,10 @@ async def extract_content(ctx: Context, url: str, strategy: str = "llm") -> str:
         })
 
 @mcp.tool()
-async def search_web(ctx: Context, query: str, limit: int = 5) -> str:
-    """
-    Search the web for the given query.
-    
-    Args:
-        query: Search query
-        limit: Maximum number of results to return (default: 5)
-        
-    Returns:
-        str: JSON string containing search results or error message
-    """
-    try:
-        # This is a placeholder for actual web search functionality
-        # You would typically integrate with a search API here
-        return json.dumps({
-            "status": "success",
-            "query": query,
-            "results": [
-                {
-                    "title": f"Result {i+1} for '{query}'",
-                    "url": f"https://example.com/result/{i+1}",
-                    "snippet": f"This is a sample result for '{query}'. This would be a snippet from the search result."
-                } for i in range(min(limit, 5))
-            ]
-        })
-    except Exception as e:
-        return json.dumps({
-            "status": "error",
-            "message": str(e)
-        })
+async def search_web(query: str, limit: int = 5) -> str:
+    """Web search via DuckDuckGo."""
+    payload = await asyncio.to_thread(duckduckgo_web_search_sync, query, limit)
+    return json.dumps(payload, indent=2)
 
 # Expose the ASGI app for Uvicorn
 app = mcp.sse_app

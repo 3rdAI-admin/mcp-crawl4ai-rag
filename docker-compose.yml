@@ -13,7 +13,7 @@ services:
       neo4j:
         condition: service_healthy
     ports:
-      - "8054:8054"
+      - "127.0.0.1:8054:8054"
     env_file:
       - .env
     environment:
@@ -74,7 +74,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - PGRST_DB_URI=postgres://postgres:postgres@postgres:5432/agentic_rag
+      - PGRST_DB_URI=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - PGRST_DB_SCHEMA=public
       - PGRST_DB_ANON_ROLE=postgres
       - PGRST_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
@@ -82,7 +82,7 @@ services:
       - PGRST_LOG_LEVEL=info
       - PGRST_SECRET_IS_BASE64=false
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - mcp-network
     healthcheck:
@@ -102,8 +102,8 @@ services:
       - NEO4J_dbms_memory_heap_initial__size=1G
       - NEO4J_dbms_memory_heap_max__size=2G
     ports:
-      - "7475:7474"  # Changed from 7474 to avoid conflict
-      - "7688:7687"  # Changed from 7687 to avoid conflict
+      - "127.0.0.1:7475:7474"  # Changed from 7474 to avoid conflict
+      - "127.0.0.1:7688:7687"  # Changed from 7687 to avoid conflict
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
