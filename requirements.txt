@@ -1,14 +1,23 @@
-crawl4ai==0.6.2
-mcp==1.7.1
-supabase==2.15.1
-openai==1.71.0
-python-dotenv>=1.0.0
+# Core
+crawl4ai>=0.8.6,<0.9
+mcp>=1.27.0,<2
+supabase>=2.15.1
+openai>=1.71.0
+python-dotenv>=1.2.2
 sentence-transformers>=4.1.0
 neo4j>=5.13.0
-fastapi
-uvicorn
-httpx
-requests>=2.31.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+httpx>=0.28.0
+requests>=2.33.0
 duckduckgo-search>=7.0.0
 pydantic>=2.0.0
-python-multipart
+python-multipart>=0.0.27
+
+# Transitive minimums (Dependabot / GHSA coverage)
+aiohttp>=3.13.4
+urllib3>=2.6.3
+starlette>=0.49.1
+pillow>=12.2.0
+# lxml: crawl4ai pins lxml~=5.3; GHSA fix requires 6.1.0+ — remove when crawl4ai updates.
+cryptography>=46.0.0
